@@ -26,11 +26,11 @@ function fetch_html($url) {
     $error = curl_error($ch);
     curl_close($ch);
 
-    if($error) {die("Ошибка curl:  $error"); }
+    if($error) {return false; }
     return $html;
 }
 
-// извлечения
+// извлечения ссылок на картинки
 function extract_image_links($html) {
     $links = [];
 
@@ -48,49 +48,92 @@ function extract_image_links($html) {
     return $links;    
 }
 
-// ===МАИН===
-// откуда 
-$url = 'https://www.juraprofi.de/DeLonghi-Ersatzteile/Wassertank/Abdeckung-Wassertank-silber-fuer-DeLonghi-Perfecta-Evo::17096.html'; 
+// извлечение совместимостей
+function extract_compatibility($html) {
+    $comp_s = [];
 
-// echo "<h2>Получение html</h2>";
+    $pattern_comp_container = '@<div\s+class="ContentSmall prod_info_suche_merkmale[^>]*>(.*?)</div>@imsu';
+    if(!preg_match($pattern_comp_container, $html, $match)) {
+        return [];
+    }
 
-// получение html 
-$html = fetch_html($url);
+    /* здесь внутри будет <p>, <h2>, а дальше в <ul> нам нужны будут <li>,
+     причем просто все ul - это перечень совместимости
+    */
+}
 
-// echo "<h2>Извлеение ссылок</h2>";
-$image_links = extract_image_links($html);
+// === МАИН ===
 
-// if (empty($image_links)) {
-//     echo "Не получилось собрать данные";
-// } else {
-//     echo "<p>Найдено картинок: " . count($image_links) . "</p>";
-//     echo "<pre>";
-//     print_r($image_links); // массив
-//     echo "</pre>";
-// }
+// ячайки положения
+$cell_links = 'A';
+$cell_image = 'B';
+$cell_compatibility = 'C';
 
-// соединение в массиве "|"
-$links_string = implode('|', $image_links);
 
-// файл
-$filename = 'test.xlsx';
+// файлы
+$filename = 'test.xlsx'; // файл записи 
+$inputFile = 'input.xlsx'; // файл чтения
+
+$reader = IOFactory::createReader('Xlsx');
+$spreadsheet = $reader->load($inputFile);
+$worksheet = $spreadsheet->getSheetByName('НОВЫЕ!'); // страница экселя
+
+if (!$worksheet) {
+    echo "Страница не найдена";
+}
+
+// храним пути на страницы из эксель 
+$id_urls = [];
+
+// считывание с экселя
+for ($row=2; $row < 12; $row++) {
+    $cellValue = $worksheet->getCell("B$row")->getValue();
+    if (!empty($cellValue)) {
+        $id_urls[] = trim($cellValue);
+    }
+}
 
 // файл сущ.
 if(file_exists($filename)) {
-    $spreadsheet = IOFactory::load($filename); // открытие файла
-    $sheet = $spreadsheet->getActiveSheet(); // к активной странице
+    $outspreadsheet = IOFactory::load($filename); // открытие файла
+    $sheet = $outspreadsheet->getActiveSheet(); // к активной странице
     $nextRow = $sheet->getHighestRow() + 1; // сдвигаемся к после заполненой
-    $sheet->setCellValue('A' . $nextRow, $links_string); // запись ниже заполненных данных НАДО ДОБАВИТЬ ЛОГИКУ !!!
-    echo "$links_string";
 } else {
-    $spreadsheet = new Spreadsheet(); // новая табла
-    $sheet = $spreadsheet->getActiveSheet();// к активной странице таблы
+    $outspreadsheet = new Spreadsheet(); // новая табла
+    $sheet = $outspreadsheet->getActiveSheet();// к активной странице таблы
+    
     // заполнение таблицы
-    $sheet->setCellValue('A1', 'Картинки');
-    $sheet->setCellValue('A2', $links_string);
-    echo "Создан файл";
+    $sheet->setCellValue($cell_links . '1', 'ссылка');
+    $sheet->setCellValue($cell_image . '1', 'картинки');
+    $sheet->setCellValue($cell_compatibility . '1', 'совместимость');
+
+    $nextRow = 2;
 }
 
+// получение html 
+foreach ($id_urls as $url) {
+
+    // html страницы 
+    $html = fetch_html($url);
+
+    // === ВЫЧЛИНЕНИЕ ИНФОРМАЦИИ ===
+    // ссылка на карточку
+    $sheet->setCellValue($cell_links . $nextRow, $url);
+
+    // ссылки на картинки
+    $image_links = extract_image_links($html); 
+    $links_string = implode('|', $image_links); // соединение в массиве с разделителем "|"
+    $sheet->setCellValue($cell_image . $nextRow, $links_string); // запись ниже заполненных данных
+
+    // совместимость
+    $compatibility = extract_compatibility($html);
+    
+    
+    // переход к следующией строке
+    $nextRow++;
+
+    sleep(1);
+}
 
 // // подготовка к скачиванию
 // header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -101,7 +144,7 @@ if(file_exists($filename)) {
 // $writer->save('php://output');
 
 // сохранение файла на сервере 0_о
-$writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+$writer = IOFactory::createWriter($outspreadsheet, 'Xlsx');
 $writer->save($filename);
 echo "Файл сохранен " . realpath($filename);
 // exit;
