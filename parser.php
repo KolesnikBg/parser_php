@@ -52,14 +52,33 @@ function extract_image_links($html) {
 function extract_compatibility($html) {
     $comp_s = [];
 
-    $pattern_comp_container = '@<div\s+class="ContentSmall prod_info_suche_merkmale[^>]*>(.*?)</div>@imsu';
+    $pattern_comp_container = '@<div\s+class="ContentSmall prod_info_suche_merkmale"[^>]*>(.*?)</div>@imsu';
     if(!preg_match($pattern_comp_container, $html, $match)) {
         return [];
     }
 
+    $html_comp_s = $match[1];
+
+    $pattern_li = '@<li[^>]*>(.*?)</li>@imsu';
+
+    if (preg_match_all($pattern_li, $html_comp_s, $matches)) {
+        foreach ($matches[1] as $item) {
+            // минус html (на всякий)
+            $text = strip_tags($item);
+            // минус пробелы и переносы 
+            $text = trim(preg_replace('/\s+/', ' ', $text));
+            if ($text !== '') {
+                $comp_s[] = $text;
+            }
+        }
+    }
+
+    return $comp_s;
     /* здесь внутри будет <p>, <h2>, а дальше в <ul> нам нужны будут <li>,
      причем просто все ul - это перечень совместимости
     */
+
+
 }
 
 // === МАИН ===
@@ -86,7 +105,7 @@ if (!$worksheet) {
 $id_urls = [];
 
 // считывание с экселя
-for ($row=2; $row < 12; $row++) {
+for ($row=2; $row < 6; $row++) {
     $cellValue = $worksheet->getCell("B$row")->getValue();
     if (!empty($cellValue)) {
         $id_urls[] = trim($cellValue);
@@ -127,6 +146,8 @@ foreach ($id_urls as $url) {
 
     // совместимость
     $compatibility = extract_compatibility($html);
+    $compatibility_string = implode(",", $compatibility);
+    $sheet->setCellValue($cell_compatibility . $nextRow, $compatibility_string);
     
     
     // переход к следующией строке
