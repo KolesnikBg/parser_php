@@ -81,12 +81,32 @@ function extract_compatibility($html) {
 
 }
 
+function extract_name($html) {
+    $name = '';
+    
+    $pattern_name_container = '@<div\s+class="prodContent prodDescription"[^>]*>(.*?)</div>@imsu';
+    if (!preg_match($pattern_name_container, $html, $match)) {
+        return [];
+    }
+
+    $html_name = $match[1];
+
+    $pattern_name = '@<p\s+class="h3"[^>]*>(.*?)</p>@imsu';
+    if (preg_match($pattern_name, $html_name, $matches)) {
+        $name = $matches[1]; 
+    }
+
+    return $name;
+
+}
+
 // === МАИН ===
 
 // ячайки положения
 $cell_links = 'A';
 $cell_image = 'B';
 $cell_compatibility = 'C';
+$cell_name = 'D';
 
 
 // файлы
@@ -125,11 +145,12 @@ if(file_exists($filename)) {
     $sheet->setCellValue($cell_links . '1', 'ссылка');
     $sheet->setCellValue($cell_image . '1', 'картинки');
     $sheet->setCellValue($cell_compatibility . '1', 'совместимость');
+    $sheet->setCellValue($cell_name . '1', 'название');
 
     $nextRow = 2;
 }
 
-// получение html 
+// проход по ссылкам из входного excel 
 foreach ($id_urls as $url) {
 
     // html страницы 
@@ -146,9 +167,12 @@ foreach ($id_urls as $url) {
 
     // совместимость
     $compatibility = extract_compatibility($html);
-    $compatibility_string = implode(",", $compatibility);
+    $compatibility_string = implode(", ", $compatibility);
     $sheet->setCellValue($cell_compatibility . $nextRow, $compatibility_string);
     
+    // название и описание
+    $name = extract_name($html);
+    $sheet->setCellValue($cell_name . $nextRow, $name);
     
     // переход к следующией строке
     $nextRow++;
