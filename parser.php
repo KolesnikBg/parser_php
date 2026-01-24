@@ -1,9 +1,19 @@
 <?php
-// подключение библы для excel
+/**
+ * @author KolesnikBg
+ * Парсинг с сайта https://www.juraprofi.de/ в эксель такие характеристики товара, как:
+ * 1. Название - наименование товара (string)
+ * 2. Ссылка на товар (string)
+ * 3. Ссылки на картинки товара (string с разделителем '|')
+ * 4. Совместимость - с какими произволителями/моделями совместим товар (string с разделителем ', ')
+ * 5. Описание товара - "Данная запчасть подходит для ремионта кофемашины: <ul>$перечень_совместимостей</ul>" (string html)
+ */
+
+// подключение библиотек
 require_once "./PhpSpreadsheet-1.12.0/vendor/autoload.php";
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use \PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\IOFactory; // обработка i-o 
+use PhpOffice\PhpSpreadsheet\IOFactory; // обработка i-o без скачивания
 
 // кодировка
 header('Content-Type: text/html; charset=utf-8');
@@ -21,12 +31,16 @@ function fetch_html($url) {
 
     // маскировка под браузер
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
-        
+    
+    // html страницы
     $html = curl_exec($ch);
-    $error = curl_error($ch);
-    curl_close($ch);
+   
+    // curl_close($ch);
 
+    // обработка ошибок
+     $error = curl_error($ch);
     if($error) {return false; }
+
     return $html;
 }
 
@@ -72,21 +86,17 @@ function extract_compatibility($html) {
             }
         }
     }
-
     return $comp_s;
-    /* здесь внутри будет <p>, <h2>, а дальше в <ul> нам нужны будут <li>,
-     причем просто все ul - это перечень совместимости
-    */
-
-
 }
 
+
+// извлечение название карточки
 function extract_name($html) {
     $name = '';
     
     $pattern_name_container = '@<div\s+class="prodContent prodDescription"[^>]*>(.*?)</div>@imsu';
     if (!preg_match($pattern_name_container, $html, $match)) {
-        return [];
+        return '';
     }
 
     $html_name = $match[1];
@@ -100,6 +110,40 @@ function extract_name($html) {
 
 }
 
+// извлечение и сборка описания
+function extract_desc($html) {
+    $desc = '';
+    $pattern_comp_desc = '@<div\s+class="ContentSmall prod_info_suche_merkmale"[^>]*>(.*?)</div>@imsu';
+    if(!preg_match($pattern_comp_desc, $html, $match)) {
+        return '';
+    }
+    
+    // захватываем с html
+    $desc = $match[1];
+
+    // === ЗАМЕНА html (стили) ===
+    // замена заголовка описания
+    $start =  '<div>&nbsp;</div><div>Данная запчасть подходит для ремонта кофемашины:</div>';
+
+    // минус немецен шпрехен
+    $desc = str_replace('<p class="h2">Das Ersatzteil ist passend für:</p>', '<div>&nbsp;</div>', $desc);
+
+    // h2 заголовки - название брендов
+    $desc = str_replace('<h2>', '<h2 style="margin: 0px 0px 15px; padding: 0px; font-size: 18px; color: rgb(0, 76, 179); font-weight: 400; line-height: 24px;"><strong>', $desc);
+    $desc = str_replace('</h2>', '</strong></h2>', $desc);
+
+    // ul
+    $desc = str_replace('<ul style="height: 38px;">', '<ul style="margin: 0px 0px 13px 15px; padding-right: 0px; padding-left: 0px; color: rgb(88, 88, 90);  line-height: 18px;">', $desc);
+
+    // li
+    $desc = str_replace('<li>', '<li><span style="color: rgb(105, 105, 105);">', $desc);
+    $desc = str_replace('</li>', '</span></li>', $desc);
+
+    $desc = $start . $desc;
+
+    return $desc;
+}
+
 // === МАИН ===
 
 // ячайки положения
@@ -107,6 +151,7 @@ $cell_links = 'A';
 $cell_image = 'B';
 $cell_compatibility = 'C';
 $cell_name = 'D';
+$cell_desc = 'E';
 
 
 // файлы
@@ -146,6 +191,7 @@ if(file_exists($filename)) {
     $sheet->setCellValue($cell_image . '1', 'картинки');
     $sheet->setCellValue($cell_compatibility . '1', 'совместимость');
     $sheet->setCellValue($cell_name . '1', 'название');
+    $sheet->setCellValue($cell_desc . '1', 'описание');
 
     $nextRow = 2;
 }
@@ -170,9 +216,16 @@ foreach ($id_urls as $url) {
     $compatibility_string = implode(", ", $compatibility);
     $sheet->setCellValue($cell_compatibility . $nextRow, $compatibility_string);
     
-    // название и описание
+    // название 
     $name = extract_name($html);
     $sheet->setCellValue($cell_name . $nextRow, $name);
+
+    // описание
+    $desc = extract_desc($html);
+    // echo "$desc";
+    $sheet->setCellValue($cell_desc . $nextRow, $desc);
+
+
     
     // переход к следующией строке
     $nextRow++;
