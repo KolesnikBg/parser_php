@@ -133,7 +133,7 @@ function extract_desc($html) {
     $desc = str_replace('</h2>', '</strong></h2>', $desc);
 
     // ul
-    $desc = str_replace('<ul style="height: 38px;">', '<ul style="margin: 0px 0px 13px 15px; padding-right: 0px; padding-left: 0px; color: rgb(88, 88, 90);  line-height: 18px;">', $desc);
+    $desc = str_replace('<ul', '<ul style="margin: 0px 0px 13px 15px; padding-right: 0px; padding-left: 0px; color: rgb(88, 88, 90);  line-height: 18px;">', $desc);
 
     // li
     $desc = str_replace('<li>', '<li><span style="color: rgb(105, 105, 105);">', $desc);
