@@ -15,6 +15,12 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use \PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\IOFactory; // обработка i-o без скачивания
 
+// файл прогресса 
+$fileProgress = __DIR__ . "/last_row.txt";
+
+// кол-во проходка за раз
+$batchSize = 2;
+
 // кодировка
 header('Content-Type: text/html; charset=utf-8');
 
@@ -146,16 +152,19 @@ function extract_desc($html) {
 
 // === МАИН ===
 
-// ячайки положения
-$cell_links = 'A';
-$cell_image = 'B';
-$cell_compatibility = 'C';
-$cell_name = 'D';
-$cell_desc = 'E';
+// инициализация таймера
+$start = microtime(true);
+
+// ячейки положения
+$cell_links = 'B';
+$cell_image = 'N';
+$cell_compatibility = 'P';
+$cell_name = 'I';
+$cell_desc = 'K';
 
 
 // файлы
-$filename = 'test.xlsx'; // файл записи 
+$filename = 'output.xlsx'; // файл записи
 $inputFile = 'input.xlsx'; // файл чтения
 
 $reader = IOFactory::createReader('Xlsx');
@@ -166,15 +175,23 @@ if (!$worksheet) {
     echo "Страница не найдена";
 }
 
+//
+$startRow = 2;
+if (file_exists($fileProgress)) {
+    $startRow = (int)file_get_contents($fileProgress);
+}
+echo "Начинаем с: $startRow <br>";
+flush();
+
 // храним пути на страницы из эксель 
 $id_urls = [];
+$processedRow = 0; 
 
 // считывание с экселя
-for ($row=2; $row < 6; $row++) {
+for ($row = $startRow; $row <= 3556 && $processedRow < $batchSize; $row++) {
     $cellValue = $worksheet->getCell("B$row")->getValue();
-    if (!empty($cellValue)) {
-        $id_urls[] = trim($cellValue);
-    }
+    $id_urls[] = trim($cellValue);
+    $processedRow++;
 }
 
 // файл сущ.
@@ -228,9 +245,14 @@ foreach ($id_urls as $url) {
 
     
     // переход к следующией строке
+    file_put_contents($fileProgress, $startRow + $batchSize);
     $nextRow++;
 
+    // if ($nextRow % 10 == 0) {
+    //     sleep(random_int(2, 5));
+    // } else {
     sleep(1);
+    // }
 }
 
 // // подготовка к скачиванию
@@ -244,6 +266,7 @@ foreach ($id_urls as $url) {
 // сохранение файла на сервере 0_о
 $writer = IOFactory::createWriter($outspreadsheet, 'Xlsx');
 $writer->save($filename);
-echo "Файл сохранен " . realpath($filename);
+echo "<h1>Файл сохранен " . realpath($filename) . '</h1></br>';
+echo '<h2>Время выполнения скрипта: ' . round(microtime(true)-$start, 4) . 'секунд</h2>';
 // exit;
 ?>
