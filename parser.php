@@ -11,15 +11,9 @@
 
 // подключение библиотек
 require_once "./PhpSpreadsheet-1.12.0/vendor/autoload.php";
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+// use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use \PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\IOFactory; // обработка i-o без скачивания
-
-// файл прогресса 
-$fileProgress = __DIR__ . "/last_row.txt";
-
-// кол-во проходка за раз
-$batchSize = 2;
 
 // кодировка
 header('Content-Type: text/html; charset=utf-8');
@@ -30,9 +24,9 @@ function fetch_html($url) {
     curl_setopt($ch, CURLOPT_URL, trim($url)); // url для работы
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // верни как строку
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // редиректы
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // ждем 
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // подключаемся 
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // скипаем ssl 
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // ждем
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // подключаемся
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // скипаем ssl
     curl_setopt($ch, CURLOPT_ENCODING, ''); // gzip БЕЗ ЭТОГО НЕ РАБОТАЕТ !!!
 
     // маскировка под браузер
@@ -50,22 +44,65 @@ function fetch_html($url) {
     return $html;
 }
 
+// извлечение артикуля товара
+function extract_article($html) {
+    $article = '';
+
+    $pattern_article_container = '@<span\s+class="model preisInfoExtra"[^>]*>(.*?)</span>@imsu';
+    if(!preg_match($pattern_article_container, $html, $match)) {
+        return '';
+    }
+    // print_r($match);
+    $article = $match[1];
+    $article = str_replace('Artikel-Nr.: ', '', $article);
+    // echo "$article <br>";
+
+    return $article;
+}
+
+// извлечение цены в евро
+function extract_price($html) {
+    $price = '';
+
+    $pattern_price_eur_container = '@<div\s+id="cuPrice"[^>]*>(.*?)</div>@imsu';
+    if(!preg_match($pattern_price_eur_container, $html, $match)) {
+        return '';
+    }
+
+    $price = str_replace(' EUR', '', $match[1]);
+    
+    return $price;
+
+}
+
 // извлечения ссылок на картинки
 function extract_image_links($html) {
     $links = [];
 
     $pattern_img_container = '@<div\s+class="mehrBilder"[^>]*>(.*?)</div>@imsu';
-    if (!preg_match($pattern_img_container, $html, $match)) {
-        return [];
+    if (preg_match($pattern_img_container, $html, $match)) {
+        
+        $html_img_container = $match[1];
+        
+        $pattern_img = '@<a\s+data-options="lazyZoom:\s*true"[^>]*href="([^"]+)"@imsu';
+        
+        if (preg_match_all($pattern_img, $html_img_container, $matches)) {
+            $links = $matches[1];
+        }
+        $links = implode('|', $links); // соединение в массиве с разделителем "|"
     }
 
-    $html_img_container = $match[1];
-
-    $pattern_img = '@<a\s+data-options="lazyZoom:\s*true"[^>]*href="([^"]+)"@imsu';
-    if (preg_match_all($pattern_img, $html_img_container, $matches)) {
-        $links = $matches[1];
+    
+    if (empty($links)) {
+        if (preg_match('@<a[^>]*\s+id=["\']?Zoomer["\']?[^>]*\s+href=["\']([^"\']+)@imsu', $html, $zoomMatch)) {
+            $links = trim($zoomMatch[1]);
+            print_r($links);
+        }
     }
-    return $links;    
+    
+    
+    return $links;
+     
 }
 
 // извлечение совместимостей
@@ -150,7 +187,9 @@ function extract_desc($html) {
     return $desc;
 }
 
-// === МАИН ===
+/*
+* === МАИН ===
+*/
 
 // инициализация таймера
 $start = microtime(true);
@@ -161,12 +200,18 @@ $cell_image = 'N';
 $cell_compatibility = 'P';
 $cell_name = 'I';
 $cell_desc = 'K';
-
+$cell_article = 'D';
+$cell_price = 'E';
 
 // файлы
 $filename = 'output.xlsx'; // файл записи
 $inputFile = 'input.xlsx'; // файл чтения
+$fileProgress = __DIR__ . "/last_row.txt"; // файл прогресса строки
 
+// кол-во проходка за раз
+$batchSize = 15;
+
+// читание ссылко из ексель
 $reader = IOFactory::createReader('Xlsx');
 $spreadsheet = $reader->load($inputFile);
 $worksheet = $spreadsheet->getSheetByName('НОВЫЕ!'); // страница экселя
@@ -175,7 +220,7 @@ if (!$worksheet) {
     echo "Страница не найдена";
 }
 
-//
+// стартует со строки эксель
 $startRow = 2;
 if (file_exists($fileProgress)) {
     $startRow = (int)file_get_contents($fileProgress);
@@ -194,6 +239,7 @@ for ($row = $startRow; $row <= 3556 && $processedRow < $batchSize; $row++) {
     $processedRow++;
 }
 
+
 // файл сущ.
 if(file_exists($filename)) {
     $outspreadsheet = IOFactory::load($filename); // открытие файла
@@ -205,6 +251,8 @@ if(file_exists($filename)) {
     
     // заполнение таблицы
     $sheet->setCellValue($cell_links . '1', 'ссылка');
+    $sheet->setCellValue($cell_article . '1', 'артикул');
+    $sheet->setCellValue($cell_price . '1', 'цена евро');
     $sheet->setCellValue($cell_image . '1', 'картинки');
     $sheet->setCellValue($cell_compatibility . '1', 'совместимость');
     $sheet->setCellValue($cell_name . '1', 'название');
@@ -223,10 +271,17 @@ foreach ($id_urls as $url) {
     // ссылка на карточку
     $sheet->setCellValue($cell_links . $nextRow, $url);
 
+    // артикул
+    $article = extract_article($html);
+    $sheet->setCellValue($cell_article . $nextRow, $article);
+
+    // цена в евро
+    $price_eur = extract_price($html);
+    $sheet->setCellValue($cell_price . $nextRow, $price_eur);
+
     // ссылки на картинки
     $image_links = extract_image_links($html); 
-    $links_string = implode('|', $image_links); // соединение в массиве с разделителем "|"
-    $sheet->setCellValue($cell_image . $nextRow, $links_string); // запись ниже заполненных данных
+    $sheet->setCellValue($cell_image . $nextRow, $image_links); // запись ниже заполненных данных
 
     // совместимость
     $compatibility = extract_compatibility($html);
@@ -241,32 +296,21 @@ foreach ($id_urls as $url) {
     $desc = extract_desc($html);
     // echo "$desc";
     $sheet->setCellValue($cell_desc . $nextRow, $desc);
-
-
     
     // переход к следующией строке
     file_put_contents($fileProgress, $startRow + $batchSize);
     $nextRow++;
 
-    // if ($nextRow % 10 == 0) {
-    //     sleep(random_int(2, 5));
-    // } else {
     sleep(1);
-    // }
+
 }
 
-// // подготовка к скачиванию
-// header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-// header('Content-Disposition: attachment; filename="' . $filename . '"');
-
-// // скачивем файл 
-// $writer = new Xlsx($spreadsheet);
-// $writer->save('php://output');
 
 // сохранение файла на сервере 0_о
 $writer = IOFactory::createWriter($outspreadsheet, 'Xlsx');
 $writer->save($filename);
 echo "<h1>Файл сохранен " . realpath($filename) . '</h1></br>';
 echo '<h2>Время выполнения скрипта: ' . round(microtime(true)-$start, 4) . 'секунд</h2>';
-// exit;
+
+
 ?>
