@@ -75,6 +75,37 @@ function extract_price($html) {
 
 }
 
+// извлечение категории
+function extract_category($html) {
+
+    $category = [];
+
+    $pattern = '/<span class="icon--before[^"]* navtrail">\s*<a href="([^"]+)"[^>]*>\s*<span>([^<]+)<\/span>\s*<\/a>/u';
+    preg_match_all($pattern, $html, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $match) {
+        $title = trim($match[2]);
+        $category[] = $title;
+    }
+
+    return $category;
+}
+
+// извлечение производителя товара
+function extract_manufacture($html) {
+    $manufacture = '';
+
+    $pattern = '/<br>\s*Hersteller:\s*(.*?)\s*<br>/imsu';
+    if(!preg_match($pattern, $html, $match)) {
+        return '';
+    }
+
+    $manufacture = trim($match[1]);
+    // print_r($match);
+
+    return $manufacture;
+}
+
 // извлечения ссылок на картинки
 function extract_image_links($html) {
     $links = [];
@@ -83,7 +114,6 @@ function extract_image_links($html) {
     if (preg_match($pattern_img_container, $html, $match)) {
         
         $html_img_container = $match[1];
-        
         $pattern_img = '@<a\s+data-options="lazyZoom:\s*true"[^>]*href="([^"]+)"@imsu';
         
         if (preg_match_all($pattern_img, $html_img_container, $matches)) {
@@ -96,7 +126,7 @@ function extract_image_links($html) {
     if (empty($links)) {
         if (preg_match('@<a[^>]*\s+id=["\']?Zoomer["\']?[^>]*\s+href=["\']([^"\']+)@imsu', $html, $zoomMatch)) {
             $links = trim($zoomMatch[1]);
-            print_r($links);
+            // print_r($links);
         }
     }
     
@@ -196,12 +226,15 @@ $start = microtime(true);
 
 // ячейки положения
 $cell_links = 'B';
-$cell_image = 'N';
-$cell_compatibility = 'P';
-$cell_name = 'I';
-$cell_desc = 'K';
 $cell_article = 'D';
 $cell_price = 'E';
+$cell_category = 'H';
+$cell_name = 'I';
+$cell_manufacture = 'J';
+$cell_image = 'N';
+$cell_compatibility = 'P';
+$cell_desc = 'K';
+
 
 // файлы
 $filename = 'output.xlsx'; // файл записи
@@ -209,7 +242,7 @@ $inputFile = 'input.xlsx'; // файл чтения
 $fileProgress = __DIR__ . "/last_row.txt"; // файл прогресса строки
 
 // кол-во проходка за раз
-$batchSize = 15;
+$batchSize = 5;
 
 // читание ссылко из ексель
 $reader = IOFactory::createReader('Xlsx');
@@ -253,9 +286,11 @@ if(file_exists($filename)) {
     $sheet->setCellValue($cell_links . '1', 'ссылка');
     $sheet->setCellValue($cell_article . '1', 'артикул');
     $sheet->setCellValue($cell_price . '1', 'цена евро');
+    $sheet->setCellValue($cell_category . '1', 'категория источник');
+    $sheet->setCellValue($cell_name . '1', 'название');
+    $sheet->setCellValue($cell_manufacture . '1', 'производитель');
     $sheet->setCellValue($cell_image . '1', 'картинки');
     $sheet->setCellValue($cell_compatibility . '1', 'совместимость');
-    $sheet->setCellValue($cell_name . '1', 'название');
     $sheet->setCellValue($cell_desc . '1', 'описание');
 
     $nextRow = 2;
@@ -279,6 +314,20 @@ foreach ($id_urls as $url) {
     $price_eur = extract_price($html);
     $sheet->setCellValue($cell_price . $nextRow, $price_eur);
 
+    // категория источник (хлебные крошки)
+    $category = extract_category($html);
+    $category = implode(' > ', $category);
+    // echo "$category</br>";
+    $sheet->setCellValue($cell_category . $nextRow, $category);
+
+    // название 
+    $name = extract_name($html);
+    $sheet->setCellValue($cell_name . $nextRow, $name);
+
+    // производитель
+    $manufacture = extract_manufacture($html);
+    $sheet->setCellValue($cell_manufacture . $nextRow, $manufacture);
+
     // ссылки на картинки
     $image_links = extract_image_links($html); 
     $sheet->setCellValue($cell_image . $nextRow, $image_links); // запись ниже заполненных данных
@@ -288,10 +337,6 @@ foreach ($id_urls as $url) {
     $compatibility_string = implode(", ", $compatibility);
     $sheet->setCellValue($cell_compatibility . $nextRow, $compatibility_string);
     
-    // название 
-    $name = extract_name($html);
-    $sheet->setCellValue($cell_name . $nextRow, $name);
-
     // описание
     $desc = extract_desc($html);
     // echo "$desc";
