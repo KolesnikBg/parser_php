@@ -47,16 +47,22 @@ function fetch_html($url) {
 // извлечение артикуля товара
 function extract_article($html) {
     $article = '';
-
-    $pattern_article_container = '@<span\s+class="model preisInfoExtra"[^>]*>(.*?)</span>@imsu';
-    if(!preg_match($pattern_article_container, $html, $match)) {
-        return '';
+    
+    // === Вариант 1: Извлечение прямо из HTML (надёжнее) ===
+    // [^<]+ — захватывает всё, кроме <, т.е. до закрывающего тега
+    if (preg_match('@Artikel-Nummer:\s*([^<]+)@i', $html, $m)) {
+        $article = trim($m[1]);
     }
-    // print_r($match);
-    $article = $match[1];
-    $article = str_replace('Artikel-Nr.: ', '', $article);
-    // echo "$article <br>";
-
+    
+    // === Вариант 2: Если нужен strip_tags ===
+    // if (empty($article)) {
+    //     $text = strip_tags($html);
+    //     // [\w\-\./]+ — только допустимые символы артикула
+    //     if (preg_match('@Artikel-Nummer:\s*([\w\-\./]+)@i', $text, $m)) {
+    //         $article = trim($m[1]);
+    //     }
+    // }
+    
     return $article;
 }
 
@@ -237,17 +243,17 @@ $cell_desc = 'K';
 
 
 // файлы
-$filename = 'output.xlsx'; // файл записи
-$inputFile = 'input.xlsx'; // файл чтения
+$filename = 'output_test.xlsx'; // файл записи
+$inputFile = 'input_test.xlsx'; // файл чтения
 $fileProgress = __DIR__ . "/last_row.txt"; // файл прогресса строки
 
 // кол-во проходка за раз
-$batchSize = 5;
+$batchSize = 100;
 
 // читание ссылко из ексель
 $reader = IOFactory::createReader('Xlsx');
 $spreadsheet = $reader->load($inputFile);
-$worksheet = $spreadsheet->getSheetByName('НОВЫЕ!'); // страница экселя
+$worksheet = $spreadsheet->getSheetByName('List1'); // страница экселя
 
 if (!$worksheet) {
     echo "Страница не найдена";
@@ -266,7 +272,7 @@ $id_urls = [];
 $processedRow = 0; 
 
 // считывание с экселя
-for ($row = $startRow; $row <= 3556 && $processedRow < $batchSize; $row++) {
+for ($row = $startRow; $row <= 86 && $processedRow < $batchSize; $row++) {
     $cellValue = $worksheet->getCell("B$row")->getValue();
     $id_urls[] = trim($cellValue);
     $processedRow++;
@@ -346,7 +352,7 @@ foreach ($id_urls as $url) {
     file_put_contents($fileProgress, $startRow + $batchSize);
     $nextRow++;
 
-    sleep(1);
+    // sleep(1);
 
 }
 
